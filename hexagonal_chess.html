@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <!-- Required meta tags -->
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+ 
+        <!-- Bootstrap CSS -->
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-F3w7mX95PdgyTmZZMECAngseQB83DfGTowi0iMjiWaeVhAn4FJkqJByhZMI3AhiU" crossorigin="anonymous">
+ 
+        <title>Hexagonal Chess</title>
+    </head>
+    <body>
+        <div class="d-flex align-items-center justify-content-center">
+            <canvas id="canvas" width="1000" height="1000"></canvas>
+        </div>
+        <div>
+            <button type="button" class="btn btn-primary mb-n5" onclick="resetBoard(locations)">Reset Board</button>
+        </div>
+        <div>
+            
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.1/dist/js/bootstrap.bundle.min.js" integrity="sha384-/bQdsTh/da6pkI1MST/rWKFNjaCP5gBSY4sEBT38Q/9RBh9AH40zEOg7Hlq2THRZ" crossorigin="anonymous"></script>
+        <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+        <script>
+            var received_move = null;
+            var board = Board("glin");
+            var canvooz = document.getElementById('canvas');
+            var canvLeft = canvooz.offsetLeft;
+            var canvTop = canvooz.offsetTop;
+            var canvoozCtx = canvooz.getContext('2d');
+            var selected_piece = [];
+            var piece_index;
+            var clicked = false;
+            var moved = false;
+            var selected_space = [];
+            
+            /**** BOARD COLORS ****/
+            var color_light = "#e9ad70";
+            var color_medium = "#ffcf9f";
+            var color_dark = "#d28c45";
+            
+            
+            /***** CHESSMEN *****/
+            
+            var white_king = 6;
+            var white_queen = 5;
+            var white_bishop = 4;
+            var white_knight = 3;
+            var white_rook = 2;
+            var white_pawn = 1;
+            var void_space = 0;
+            var black_king = -6;
+            var black_queen = -5;
+            var black_bishop = -4;
+            var black_knight = -3;
+            var black_rook = -2;
+            var black_pawn = -1;
+            
+            var piece_starting_positions = [[[0,-5], black_bishop], [[-1,-4], black_queen], [[-2,-3], black_knight], [[-3,-2], black_rook], [[-4,-1], black_pawn], [[-3,-1], black_pawn], [[-2,-1], black_pawn], [[-1,-1], black_pawn], [[0, -1], black_pawn], [[1,-2], black_pawn], [[2, -3], black_pawn], [[3,-4], black_pawn], [[4,-5], black_pawn], [[0,-4], black_bishop], [[0,-3],black_bishop], [[3,-5], black_rook], [[2, -5], black_knight], [[1, -5], black_king], [[0,5], white_bishop], [[1,4], white_king], [[2, 3], white_knight], [[3, 2], white_rook], [[4, 1], white_pawn], [[3, 1], white_pawn], [[2, 1], white_pawn], [[1,1], white_pawn], [[0,1], white_pawn], [[-1, 2], white_pawn], [[-2, 3], white_pawn], [[-3, 4], white_pawn], [[-4, 5], white_pawn], [[0,4], white_bishop], [[0, 3], white_bishop], [[-3, 5], white_rook], [[-2, 5], white_knight], [[-1,5], white_queen]];
+
+            /***** CONVERSION FUNCTIONS *****/
+            
+            function roundHex(coords){
+                var rx = Math.round(coords[0]);
+                var ry = Math.round(coords[1]);
+                var rz = Math.round(coords[2]);
+                var x_diff = Math.abs(rx - coords[0]);
+                var y_diff = Math.abs(ry - coords[1]);
+                var z_diff = Math.abs(rz - coords[2]);
+
+                if((x_diff > y_diff) && (x_diff > z_diff)){
+                    rx = -1 * (ry) - rz;
+                }
+                if(y_diff > z_diff){
+                    ry = -1 * (rx) - rz;
+                }else{
+                    rz = -1 * (rx) - ry;
+                }
+                return [rx, ry, rz];
+            }
+
+            function pixelToHex(coords, size, offset){
+                coords[0] = coords[0] - offset;
+                coords[1] = coords[1] - offset
+                var q = ((2 / 3) * coords[0]) / size;
+                var r = (((-1 / 3) * coords[0]) + (Math.sqrt(3)/3) * coords[1])/size;
+                var cubes = axialToCube([q,r]);
+                var rounded = roundHex(cubes);
+                var to_ax = cubeToAxial(rounded);
+                return to_ax;
+            }
+
+            function cubeToAxial(coords) {
+                //input format: coords = [x,y,z];
+                var new_coords = [coords[0],coords[2]];
+                return new_coords;
+            }
+ 
+            function axialToCube(coords) {
+                //input format: coords = [q,r];
+                var x = coords[0];
+                var z = coords[1];
+                var y = (-1 * x) - z;
+                return [x,y,z];
+            }
+ 
+            function hexToPixel(coords, size, offset) {
+                //input format: coords = [q,r];
+                var x = size * (3/2 * coords[0]);
+                var y = size * (((Math.sqrt(3)/2) * coords[0]) + Math.sqrt(3) * coords[1]);
+                x = Math.round(x) + offset;
+                y = Math.round(y) + offset;
+                return [x,y];
+            }
+ 
+            function axialToPixel(coords_arr, size, offset) {
+                //converts axial coords to pixel coords derp
+                var pixels = [];
+                for (var i = 0; i < coords_arr.length; i++) {
+                    var coord = hexToPixel(coords_arr[i], size, offset);
+                    var x = coord[0];
+                    var y = coord[1];
+                    pixels.push([x,y]);
+                }
+                return pixels;
+            }
+
+            /******* BOARD LAYOUT *******/
+
+            function Board(variant, import_game, custom_position, flip, update) {
+
+                function axialGenerator(start, limit) {
+                    //creates a range of coordinates from start to limit
+                    var axial_coords = [];
+                    for (var r = start; r < limit; r++) {
+                        for (var q = start; q < limit; q++) {
+                            axial_coords.push([q,r]);
+                        }
+                    }
+                    return axial_coords;
+                }
+ 
+                function ringGenerator(rings, data_set) {
+                    /**** Rings should match positive limit val ****/
+
+                    /*
+                        ->takes axial coordinates set
+                        ->converts to cubic coordinates
+                        ->sums |x| + |y| + |z|
+                        ->compares sum to 2 x ring iteration
+                        ->if true, puts in new array
+                        ->cycles through new array removing the y coord
+                        ->pushes into final array and returns it (axials)
+ 
+                    */
+
+                    var cubes = [];
+                    var culled_coords = [];
+                    var reax = [];
+
+                    for (var i = 0 ; i < data_set.length; i++) {
+                        cubes.push(axialToCube(data_set[i]));
+                    }
+                    for (var j = 0; j < rings; j++) {
+                        for (var k = 0; k < cubes.length; k++) {
+                            var absolute_sum = Math.abs(cubes[k][0]) + Math.abs(cubes[k][1]) + Math.abs(cubes[k][2]);
+                            if(absolute_sum == j * 2) {
+                                culled_coords.push(cubes[k]);
+                            }
+                        }
+                    }
+                    for (var l = 0; l < culled_coords.length; l++) {
+                        var reaxed = [culled_coords[l][0], culled_coords[l][2]];
+                        reax.push(reaxed);
+                    }
+                    return reax;
+                }
+ 
+                function glinVariant(size, start, limit, offset) {
+                    /*
+                        size is the size of the hexagon
+                        start should be -1(limit)
+                        limit should be positive integer
+                        offset is a pixel value to position the hexagon of hexagons in the viewport
+                    */
+
+                    var starting_axials = axialGenerator(start, limit);
+                    var axial_coords = ringGenerator(6, starting_axials);
+                    return axial_coords;
+                }
+                if (variant == "glin") {
+                    var board_axials = glinVariant(50, -6, 6, 500);
+                    return board_axials;
+                }
+            }
+
+            /******** DATA MANAGEMENT *********/
+
+            function hexContents(hex, init, variant) {
+
+                if(init) {
+                    if(variant == "glin") {
+                        var coords_and_contents = [];
+                        for(var h = 0; h < hex.length; h++){
+                            coords_and_contents.push([hex[h], 0]);
+                        }
+                        for (var i = 0; i < coords_and_contents.length; i++) {
+                            for(var j = 0; j < piece_starting_positions.length; j++){
+                                if((coords_and_contents[i][0][0] == piece_starting_positions[j][0][0]) && (coords_and_contents[i][0][1] == piece_starting_positions[j][0][1])){
+                                    coords_and_contents[i][1] = piece_starting_positions[j][1];
+                                    break;
+                                }
+                            }
+                        }
+                        return coords_and_contents;
+                    }
+                }
+            }
+
+            /*********RENDERING**********/
+ 
+            function outlineHex(center, size, ctx) {
+                /***Draws outline hexagon for debugging***/
+                ctx.beginPath();
+                ctx.moveTo(center[0] + size * Math.cos(0), center[1] + size * Math.sin(0));
+                for (var i = 0; i < 7; i++) {
+                    ctx.lineTo(center[0] + size * Math.cos(i * 2 * Math.PI / 6), center[1] + size * Math.sin(i * 2 * Math.PI / 6));
+                }
+                ctx.strokeStyle = "#000000";
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+ 
+            function solidHex(center, size, color, ctx) {
+                ctx.beginPath();
+                ctx.moveTo(center[0] + size * Math.cos(0), center[1] + size * Math.sin(0));
+                for (var i = 0; i < 7; i++) {
+                    ctx.lineTo(center[0] + size * Math.cos(i * 2 * Math.PI / 6), center[1] + size * Math.sin(i * 2 * Math.PI / 6));
+                }
+                ctx.fillStyle = color;
+                ctx.fill();
+            }
+ 
+            function showCoordinates(center, axials, ctx) {
+                var x_val = center[0].toString();
+                var y_val = center[1].toString();
+                var r = axials[0].toString();
+                var q = axials[1].toString();
+                var cubics = axialToCube(axials);
+                var cub_x = cubics[0].toString();
+                var cub_y = cubics[1].toString();
+                var cub_z = cubics[2].toString();
+                ctx.font = "15px Arial";
+                ctx.fillStyle = "#ffffff";
+                ctx.fillText(x_val + "   " + y_val, center[0] - 20, center[1]);
+                ctx.fillText(cub_x + "   " + cub_y + "  " + cub_z, center[0] - 25, center[1] - 10);
+                ctx.fillText(r + "   " + q, center[0] - 15, center[1] - 20);
+            }
+            
+
+ 
+            function pickColorForHex(coords, color_light, color_medium, color_dark) {
+                // console.log('pickColorForHex coords', coords);
+                const colors = [color_light, color_medium, color_dark];
+                var diffX = coords[0] % 3;
+                if (diffX < 0) { diffX += 3; }
+ 
+                var diffZ = coords[1] % 3;
+                if (diffZ < 0) { diffZ += 3; }
+ 
+                var diffXZ = (diffX - diffZ) % 3;
+                if (diffXZ < 0) { diffXZ += 3; }
+ 
+                return colors[diffXZ];
+            }
+ 
+            function renderBoard(size, coords) {
+                const canvas = document.getElementById('canvas');
+                const ctx = canvas.getContext('2d');
+                var pixels = axialToPixel(coords, size, 500);
+                for (var i = 0; i < coords.length; i++) {
+                    solidHex(pixels[i], size, pickColorForHex(coords[i], color_light, color_medium, color_dark), ctx);
+                }
+            }
+ 
+            function renderCoordinates(size, coords) {
+                /*** shows coords to help debug ***/
+                const canvas = document.getElementById('canvas');
+                const ctx = canvas.getContext('2d');
+                var pixels = axialToPixel(coords, size, 500);
+                for (var i = 0; i < pixels.length; i++) {
+                    showCoordinates(pixels[i], coords[i], ctx);
+                }
+            }
+
+            function renderChessman(x, y, chessman, s_x, s_y, size, offset, nudge){
+                const canvas = document.getElementById('canvas');
+                const ctx = canvas.getContext('2d');
+                if(chessman > 0){
+                    var man = Math.abs(chessman) * 7;
+                    var piece = new Image();
+                    piece.src = `chessmen/${man}.png`;
+                    piece.onload = function(){
+                        ctx.drawImage(piece, x + nudge, y + nudge, s_x, s_y);
+                    }
+
+                }
+                if(chessman < 0){
+                    var man = Math.abs(chessman);
+                    var piece = new Image();
+                    piece.src = `chessmen/${man}.png`;
+                    piece.onload = function(){
+                        ctx.drawImage(piece, x + nudge, y + nudge, s_x, s_y);
+                    }
+                }
+
+            }
+
+            function renderChessmen(board_contents){
+                for(var i = 0; i < board_contents.length; i++){
+                    if(board_contents[i][1] !== 0){
+                        var pixels = hexToPixel(board_contents[i][0], 50, 500);
+                        var x = pixels[0];
+                        var y = pixels[1];
+
+                        renderChessman(x, y, board_contents[i][1], 65, 65, 50, 500, - 33);
+                    }
+                }
+            }
+
+            function rememberPiece(piece){
+                return piece;
+            }
+
+            function rememberIndex(index){
+                return index;
+            }
+            
+
+            function announcePiece(piece){
+                switch(piece){
+                    case -6:
+                        console.log("black king");
+                        break;
+                    case -5:
+                        console.log("black queen");
+                        break;
+                    case -4:
+                        console.log("black bishop");
+                        break;
+                    case -3:
+                        console.log("black knight");
+                        break;
+                    case -2:
+                        console.log("black rook");
+                        break;
+                    case -1:
+                        console.log("black pawn");
+                        break;
+                    case 0:
+                        console.log("empty space");
+                        break;
+                    case 1:
+                        console.log("white pawn");
+                        break;
+                    case 2:
+                        console.log("white rook");
+                        break;
+                    case 3:
+                        console.log("white knight");
+                        break;
+                    case 4:
+                        console.log("white bishop");
+                        break;
+                    case 5:
+                        console.log("white queen");
+                        break;
+                    case 6:
+                        console.log("white king");
+                }
+            }
+
+            function resetBoard(var_name){
+                var_name = piece_starting_positions;
+                renderBoard(50, board);
+                renderChessmen(var_name);
+            }
+
+            /**** API CALLS ****/
+
+            function sendMove(starting_coords, ending_coords){
+                // fetch(`http://localhost/hex/update_board.php?start=${starting_coords}&end=${ending_coords}`)
+                //     .then(response => response.json()
+                //     .then(data => console.log(data + "   fuck")));
+
+                fetch(`http://localhost/hex/update_board.php?start=${starting_coords}&end=${ending_coords}`, {mode: 'no-cors'})
+                    .then(function(response) {
+                        console.log(response);
+                    return response.text();
+                    })
+                    .then(function(text) {
+                        console.log('Request successful', text);
+                    })
+
+
+            }
+            
+            function getMove(){
+                fetch('get_move.php')
+                .then(response => response.json())
+                .then(data => received_move = data);
+
+            }
+            
+            /***INITIATE BOARD***/
+
+            var locations = hexContents(board, 1, "glin");
+            renderBoard(50, board);
+            renderChessmen(locations);
+            renderCoordinates(50, board);  //for debug
+
+            /**** EVENT HANDLERS *****/
+
+            function handleMouseMove(e) {
+                if(clicked){
+                    e.preventDefault();
+                    var mouseX = parseInt(e.pageX - 500);
+                    var mouseY = parseInt(e.pageY);
+                    canvoozCtx.clearRect(0, 0, canvooz.width, canvooz.height);
+                    //var hex = pixelToHex([mouseX, mouseY], 50, 500);
+                    //console.log(hex);
+       
+                    renderBoard(50, board);
+                    renderChessmen(locations);
+                    renderChessman(mouseX + 10, mouseY - 25, selected_piece, 65, 65, 50, 500, 0);
+                    solidHex(selected_space, 50, "#000000", canvoozCtx);
+                }
+                return [mouseX, mouseY];
+            }
+
+            $("#canvas").mousemove(function(e){
+                handleMouseMove(e);
+
+            });
+
+
+            canvooz.addEventListener('mousedown', function(event){
+                clicked = true;
+                var x = event.pageX - canvLeft;
+                var y = event.pageY - canvTop;
+                for(var i = 0 ; i < locations.length; i++){
+                    var pixels_to_hex = pixelToHex([x,y], 50, 0);
+                    if(clicked){
+                        console.log(pixels_to_hex)
+                        if((pixels_to_hex[0] == locations[i][0][0]) && (pixels_to_hex[1] == locations[i][0][1])){
+                            selected_piece = rememberPiece(locations[i][1]);
+                           // selected_space = pixels_to_hex;
+                            console.log("WORKING")
+                            piece_index = i;
+                            locations[i][1] = 0;
+                            announcePiece(locations[i][1]);
+                            console.log(selected_piece);
+                            break;
+                        }
+                    }
+                }
+            });
+
+            function capturePiece(board_contents, coords, piece){
+                for(var i = 0 ; i  < board_contents.length; i++){
+                    if((coords[0] == board_contents[i][0][0]) && (coords[1] == board_contents[i][0][1])){
+                        board_contents[i][1] = piece;
+                    }
+                }
+            }
+            canvooz.addEventListener('mouseup', function(event){
+                var x = event.pageX - canvLeft;
+                var y = event.pageY - canvTop;
+                clicked = false;
+                console.log(piece_index + "piece index");
+                var moved_to = pixelToHex([x, y], 50, 500);
+                sendMove(locations[piece_index][0], moved_to);
+                capturePiece(locations, moved_to, selected_piece);
+                locations[piece_index][0] = moved_to;
+                renderBoard(50, board);
+                renderChessmen(locations);
+            });
+        </script>
+    </body>
+</html>
